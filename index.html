@@ -1,0 +1,2094 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+  <title>Loves me, loves me not — ASCII Flower Game</title>
+  <style>
+    :root {
+      --bg-top: #060814;
+      --bg-bottom: #0d1024;
+      --ink-primary: #f3f6ff;
+      --ink-bright: #cfd9ff;
+      --ink-muted: #9aa7d1;
+      --ink-dim: #4c5885;
+      --pink: #ff8fc0;
+      --lavender: #a9bcff;
+      --gold: #f1c40f;
+      --green: #2ecc71;
+      --font-mono: 'Courier New', Consolas, 'Lucida Console', monospace;
+    }
+
+    *,
+    *::before,
+    *::after {
+      box-sizing: border-box;
+    }
+
+    html,
+    body {
+      margin: 0;
+      padding: 0;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      overscroll-behavior: none;
+      background: var(--bg-top);
+      color: var(--ink-primary);
+      font-family: var(--font-mono);
+      user-select: none;
+      -webkit-user-select: none;
+      -webkit-tap-highlight-color: transparent;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    .stage {
+      position: relative;
+      width: 100vw;
+      height: 100dvh;
+      overflow: hidden;
+      background: linear-gradient(180deg, var(--bg-top) 0%, var(--bg-bottom) 100%);
+    }
+
+    #ascii-canvas {
+      display: block;
+      width: 100%;
+      height: 100%;
+      cursor: pointer;
+      touch-action: manipulation;
+    }
+
+    /* Subtle CRT scanline texture when Glow is enabled */
+    .stage.glow-on::after {
+      content: '';
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+      background: repeating-linear-gradient(
+        to bottom,
+        rgba(255, 255, 255, 0) 0px,
+        rgba(255, 255, 255, 0) 2px,
+        rgba(4, 6, 16, 0.22) 3px
+      );
+      z-index: 3;
+    }
+
+    .hud {
+      position: absolute;
+      left: 0;
+      right: 0;
+      z-index: 10;
+      display: flex;
+      align-items: center;
+      font-family: var(--font-mono);
+      letter-spacing: 0.08em;
+      color: var(--ink-bright);
+      pointer-events: none;
+    }
+
+    .hud-top {
+      top: 0;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 8px 14px;
+      padding: max(12px, env(safe-area-inset-top)) max(20px, env(safe-area-inset-right)) 10px max(20px, env(safe-area-inset-left));
+      background: linear-gradient(180deg, rgba(6, 8, 20, 0.90) 0%, rgba(6, 8, 20, 0.35) 75%, rgba(6, 8, 20, 0) 100%);
+    }
+
+    .brand {
+      display: inline-flex;
+      align-items: center;
+      gap: 12px;
+      min-width: 0;
+    }
+
+    .title {
+      color: var(--ink-primary);
+      font-size: 16px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.12em;
+      white-space: nowrap;
+    }
+
+    .stage.glow-on .title {
+      text-shadow: 0 0 10px rgba(255, 143, 192, 0.35);
+    }
+
+    .swatches {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      flex-shrink: 0;
+    }
+
+    .swatch {
+      width: 8px;
+      height: 8px;
+      display: inline-block;
+    }
+
+    .swatch-pink { background: var(--pink); }
+    .swatch-lav { background: var(--lavender); }
+    .swatch-gold { background: var(--gold); }
+
+    .top-actions {
+      display: inline-flex;
+      align-items: center;
+      gap: 12px;
+      flex-shrink: 0;
+      pointer-events: auto;
+    }
+
+    .counter {
+      color: var(--ink-bright);
+      font-size: 14px;
+      font-weight: 700;
+      font-variant-numeric: tabular-nums;
+      white-space: nowrap;
+      text-transform: uppercase;
+    }
+
+    .hud-bottom {
+      bottom: 0;
+      justify-content: center;
+      flex-wrap: wrap;
+      gap: 10px 20px;
+      padding: 12px max(16px, env(safe-area-inset-right)) max(14px, env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left));
+      background: linear-gradient(0deg, rgba(13, 16, 36, 0.92) 0%, rgba(13, 16, 36, 0.40) 75%, rgba(13, 16, 36, 0) 100%);
+      pointer-events: auto;
+    }
+
+    .controls-hint {
+      color: var(--ink-bright);
+      font-size: 14px;
+      white-space: nowrap;
+      text-align: center;
+    }
+
+    .kbd {
+      color: #ffffff;
+      background: rgba(29, 43, 100, 0.55);
+      border: 1px solid var(--ink-dim);
+      padding: 2px 7px;
+      font-size: 13px;
+      font-weight: 700;
+    }
+
+    .btn {
+      appearance: none;
+      background: rgba(13, 16, 36, 0.82);
+      border: 1px solid var(--ink-dim);
+      color: var(--ink-primary);
+      font-family: var(--font-mono);
+      font-size: 13px;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      padding: 6px 13px;
+      cursor: pointer;
+      transition: border-color 140ms ease, color 140ms ease, background-color 140ms ease;
+      white-space: nowrap;
+    }
+
+    .btn:hover {
+      border-color: var(--pink);
+      color: #ffffff;
+      background: rgba(29, 43, 100, 0.72);
+    }
+
+    .btn[aria-pressed='true'] {
+      border-color: var(--green);
+      color: #82e0aa;
+    }
+
+    .btn-primary {
+      border-color: var(--pink);
+      color: var(--pink);
+    }
+
+    .btn-primary:hover {
+      border-color: #ffffff;
+      color: #ffffff;
+      background: rgba(255, 143, 192, 0.22);
+    }
+
+    .btn:focus-visible {
+      outline: 2px solid var(--gold);
+      outline-offset: 2px;
+    }
+
+    .sr-only {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      padding: 0;
+      margin: -1px;
+      overflow: hidden;
+      clip: rect(0, 0, 0, 0);
+      white-space: nowrap;
+      border: 0;
+    }
+
+    @media (max-width: 640px) {
+      .hud-top {
+        justify-content: center;
+        gap: 6px 10px;
+        padding: max(8px, env(safe-area-inset-top)) max(10px, env(safe-area-inset-right)) 8px max(10px, env(safe-area-inset-left));
+      }
+
+      .brand {
+        width: 100%;
+        justify-content: center;
+        gap: 8px;
+      }
+
+      .title {
+        font-size: 13px;
+        letter-spacing: 0.10em;
+      }
+
+      .swatch {
+        width: 6px;
+        height: 6px;
+      }
+
+      .top-actions {
+        width: 100%;
+        justify-content: center;
+        gap: 8px;
+      }
+
+      .counter {
+        font-size: 12px;
+      }
+
+      .hud-bottom {
+        gap: 6px 10px;
+        padding: 8px max(12px, env(safe-area-inset-right)) max(10px, env(safe-area-inset-bottom)) max(12px, env(safe-area-inset-left));
+      }
+
+      .controls-hint {
+        width: 100%;
+        font-size: 11px;
+        line-height: 1.5;
+        white-space: normal;
+      }
+
+      .kbd {
+        font-size: 10.5px;
+        padding: 1px 5px;
+      }
+
+      .btn {
+        font-size: 11px;
+        padding: 4px 9px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main class="stage glow-on" id="stage">
+    <canvas id="ascii-canvas" aria-label="Loves me, loves me not ASCII flower game canvas"></canvas>
+
+    <header class="hud hud-top">
+      <div class="brand">
+        <span class="title">Loves me, loves me not</span>
+        <span class="swatches" aria-hidden="true">
+          <span class="swatch swatch-pink"></span>
+          <span class="swatch swatch-lav"></span>
+          <span class="swatch swatch-gold"></span>
+        </span>
+      </div>
+      <div class="top-actions">
+        <span class="counter" id="plucked-counter">Plucked: 0</span>
+        <button type="button" class="btn" id="btn-sound" aria-pressed="true" title="Toggle retro sound effects (M)">Sound: On</button>
+        <button type="button" class="btn" id="btn-glow" aria-pressed="true" title="Toggle phosphor glow (G)">Glow: On</button>
+      </div>
+    </header>
+
+    <footer class="hud hud-bottom">
+      <span class="controls-hint" id="controls-hint">
+        Click / Tap flower or <span class="kbd">Space</span> Pluck &nbsp;|&nbsp; <span class="kbd">R</span> Restart
+      </span>
+      <button type="button" class="btn btn-primary" id="btn-restart" title="Start a new flower (R)">Restart</button>
+    </footer>
+
+    <div id="live-status" class="sr-only" aria-live="polite"></div>
+  </main>
+
+  <script>
+    (() => {
+      'use strict';
+
+      // =========================================================================
+      // Configuration & Palettes
+      // =========================================================================
+      const FONT_FAMILY = "'Courier New', Consolas, 'Lucida Console', monospace";
+      // Ordered strictly from heaviest visual density to lightest (plus space = 32)
+      const DENSITY_RAMP = '@#%*+=:;-.';
+      const FAIR_MODE = new URLSearchParams(window.location.search).get('fair') === '1';
+      const REDUCED_MOTION = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+      const COL = {
+        HILL_BLUE_DARK: [18, 27, 68],
+        HILL_BLUE_MID: [29, 43, 100],      // #1d2b64
+        HILL_BLUE_LIGHT: [54, 78, 162],
+        HILL_TEAL_DARK: [14, 42, 62],
+        HILL_TEAL_MID: [20, 58, 78],
+        HILL_TEAL_LIGHT: [34, 86, 106],
+        HILL_GREEN_DARK: [11, 40, 28],
+        HILL_GREEN_MID: [20, 70, 50],      // #144632
+        HILL_GREEN_LIGHT: [36, 114, 78],
+        STEM_DEEP: [15, 76, 40],
+        STEM_DARK: [30, 132, 73],          // #1e8449
+        STEM_MID: [46, 204, 113],          // #2ecc71
+        STEM_LIGHT: [130, 224, 170],       // #82e0aa
+        CENTER_DEEP: [148, 86, 10],
+        CENTER_AMBER: [214, 137, 16],      // #d68910
+        CENTER_GOLD: [241, 196, 15],       // #f1c40f
+        CENTER_SPEC: [255, 240, 166],
+        PETAL_WHITE: [249, 245, 255],
+        PETAL_PINK: [255, 143, 192],       // #ff8fc0
+        PETAL_LAV: [169, 188, 255],        // #a9bcff
+        PETAL_PEAK: [255, 253, 255],
+        STAR_WHITE: [228, 236, 255],
+        STAR_WARM: [255, 242, 204],
+        STAR_PINK: [255, 184, 220],
+        STAR_LAV: [176, 198, 255],
+        MOON_CREAM: [255, 246, 214],
+        MOON_DIM: [130, 146, 196]
+      };
+
+      const stage = document.getElementById('stage');
+      const canvas = document.getElementById('ascii-canvas');
+      const ctx = canvas.getContext('2d', { alpha: false });
+      const pluckedCounterEl = document.getElementById('plucked-counter');
+      const btnSound = document.getElementById('btn-sound');
+      const btnGlow = document.getElementById('btn-glow');
+      const btnRestart = document.getElementById('btn-restart');
+      const liveStatusEl = document.getElementById('live-status');
+
+      // =========================================================================
+      // Multi-Row ASCII Block Fonts (Pure Typographic Art)
+      // =========================================================================
+      const FONT_5X4 = {
+        L: ['1000', '1000', '1000', '1000', '1111'],
+        O: ['0110', '1001', '1001', '1001', '0110'],
+        V: ['10001', '10001', '10001', '01010', '00100'],
+        E: ['1111', '1000', '1110', '1000', '1111'],
+        S: ['0111', '1000', '0110', '0001', '1110'],
+        M: ['10001', '11011', '10101', '10001', '10001'],
+        N: ['10001', '11001', '10101', '10011', '10001'],
+        T: ['11111', '00100', '00100', '00100', '00100'],
+        P: ['1110', '1001', '1110', '1000', '1000'],
+        U: ['1001', '1001', '1001', '1001', '0110'],
+        C: ['0111', '1000', '1000', '1000', '0111'],
+        K: ['1001', '1010', '1100', '1010', '1001'],
+        A: ['0110', '1001', '1111', '1001', '1001'],
+        '!': ['11', '11', '11', '00', '11'],
+        '.': ['00', '00', '00', '00', '11'],
+        ' ': ['00', '00', '00', '00', '00']
+      };
+
+      const FONT_7X6 = {
+        L: ['110000', '110000', '110000', '110000', '110000', '111111', '111111'],
+        O: ['0111110', '1100011', '1100011', '1100011', '1100011', '1100011', '0111110'],
+        V: ['1100011', '1100011', '1100011', '1100011', '0110110', '0011100', '0001000'],
+        E: ['111111', '110000', '110000', '111110', '110000', '110000', '111111'],
+        S: ['011111', '110000', '110000', '011110', '000011', '000011', '111110'],
+        M: ['1100011', '1110111', '1111111', '1101011', '1100011', '1100011', '1100011'],
+        N: ['1100011', '1110011', '1111011', '1101111', '1100111', '1100011', '1100011'],
+        T: ['1111111', '1111111', '0011100', '0011100', '0011100', '0011100', '0011100'],
+        '!': ['111', '111', '111', '111', '000', '111', '111'],
+        '.': ['00', '00', '00', '00', '00', '11', '11'],
+        ' ': ['000', '000', '000', '000', '000', '000', '000']
+      };
+
+      function measureBlockText(text, font, spacing) {
+        let w = 0;
+        for (let i = 0; i < text.length; i++) {
+          const g = font[text[i]] || font[' '];
+          w += g[0].length;
+          if (i < text.length - 1) w += spacing;
+        }
+        return w;
+      }
+
+      function renderBlockText(text, centerCol, startRow, z, font, spacing, topRgb, midRgb, botRgb, t) {
+        const totalW = measureBlockText(text, font, spacing);
+        const rowsCount = font.L.length;
+        let cursor = Math.round(centerCol - totalW * 0.5);
+
+        for (let i = 0; i < text.length; i++) {
+          const glyph = font[text[i]] || font[' '];
+          const gw = glyph[0].length;
+          for (let r = 0; r < rowsCount; r++) {
+            const line = glyph[r];
+            const vFrac = r / Math.max(1, rowsCount - 1);
+            for (let c = 0; c < gw; c++) {
+              if (line[c] !== '1') continue;
+              const col = cursor + c;
+              const row = startRow + r;
+
+              // Crisp 1-cell offset ASCII drop shadow
+              plotCell(col + 1, row + 1, z - 0.5, 58, 22, 28, 66);
+
+              // Animated gradient & density shading from '@' crest to '#' / '%' base
+              const wave = 0.08 * Math.sin(t * 4.0 + col * 0.25 - r * 0.45);
+              let rr, gg, bb;
+              if (vFrac < 0.5) {
+                const k = vFrac * 2;
+                rr = topRgb[0] + (midRgb[0] - topRgb[0]) * k;
+                gg = topRgb[1] + (midRgb[1] - topRgb[1]) * k;
+                bb = topRgb[2] + (midRgb[2] - topRgb[2]) * k;
+              } else {
+                const k = (vFrac - 0.5) * 2;
+                rr = midRgb[0] + (botRgb[0] - midRgb[0]) * k;
+                gg = midRgb[1] + (botRgb[1] - midRgb[1]) * k;
+                bb = midRgb[2] + (botRgb[2] - midRgb[2]) * k;
+              }
+              const lum = clamp(0.95 - vFrac * 0.25 + wave, 0.55, 0.99);
+              const ch = lum > 0.84 ? 64 : lum > 0.66 ? 35 : 37; // '@', '#', '%'
+              plotCell(col, row, z, ch, rr, gg, bb);
+            }
+          }
+          cursor += gw + spacing;
+        }
+      }
+
+      // =========================================================================
+      // Grid & Buffer State
+      // =========================================================================
+      let cols = 150;
+      let rows = 76;
+      let fontSize = 11;
+      let cellW = 7;
+      let cellH = 13;
+      let originX = 0;
+      let originY = 0;
+      let vw = window.innerWidth;
+      let vh = window.innerHeight;
+      let dpr = 1;
+      let flowerScale = 1;
+      let halfWorldW = 0.5;
+      let headX = 0;
+      let headY = 0.525;
+      let bgGradient = null;
+
+      let charBuf = new Uint8Array(0);
+      let rBuf = new Uint8Array(0);
+      let gBuf = new Uint8Array(0);
+      let bBuf = new Uint8Array(0);
+      let zBuf = new Float32Array(0);
+      let petalIdBuf = new Int16Array(0);
+
+      // =========================================================================
+      // Seeded Sky, Grass & Fireflies
+      // =========================================================================
+      const seeded = (() => {
+        let seed = 88421;
+        const rand = () => {
+          seed = (seed * 1664525 + 1013904223) >>> 0;
+          return seed / 4294967296;
+        };
+
+        const stars = [];
+        const tints = [COL.STAR_WHITE, COL.STAR_WARM, COL.STAR_LAV, COL.STAR_PINK];
+        for (let i = 0; i < 220; i++) {
+          stars.push({
+            nx: rand(),
+            ny: 0.02 + rand() * 0.69,
+            phase: rand() * Math.PI * 2,
+            speed: 0.8 + rand() * 2.5,
+            tier: rand() > 0.965 ? 2 : rand() > 0.72 ? 1 : 0, // 2 = hero cross-glint
+            tint: tints[Math.floor(rand() * tints.length)]
+          });
+        }
+
+        const fireflies = [];
+        const ffColors = [
+          [255, 229, 127],
+          [241, 196, 15],
+          [130, 224, 170],
+          [255, 178, 214]
+        ];
+        for (let i = 0; i < 12; i++) {
+          fireflies.push({
+            nx: 0.06 + rand() * 0.88,
+            ny: 0.62 + rand() * 0.28,
+            phase: rand() * Math.PI * 2,
+            speed: 0.5 + rand() * 0.8,
+            ampX: 0.02 + rand() * 0.03,
+            ampY: 0.015 + rand() * 0.025,
+            color: ffColors[i % ffColors.length]
+          });
+        }
+
+        const grassTufts = [];
+        for (let i = 0; i < 42; i++) {
+          grassTufts.push({
+            nx: 0.03 + rand() * 0.94,
+            height: 2 + Math.floor(rand() * 4),
+            lean: (rand() - 0.5) * 1.8,
+            phase: rand() * Math.PI * 2,
+            hasFlower: rand() > 0.72,
+            flowerTint: i % 3 === 0 ? COL.PETAL_PINK : i % 3 === 1 ? COL.PETAL_LAV : COL.CENTER_GOLD
+          });
+        }
+
+        return { stars, fireflies, grassTufts };
+      })();
+
+      // =========================================================================
+      // Retro Web Audio Synthesizer (zero external files)
+      // =========================================================================
+      let soundEnabled = true;
+      let glowEnabled = true;
+      let audioCtx = null;
+
+      function ensureAudio() {
+        if (!soundEnabled) return null;
+        const Ctor = window.AudioContext || window.webkitAudioContext;
+        if (!Ctor) return null;
+        if (!audioCtx) audioCtx = new Ctor();
+        if (audioCtx.state === 'suspended') audioCtx.resume().catch(() => {});
+        return audioCtx;
+      }
+
+      function playTone(freq, startOffset, duration, type, gainVal, endFreq) {
+        const ac = ensureAudio();
+        if (!ac) return;
+        const now = ac.currentTime + startOffset;
+        const osc = ac.createOscillator();
+        const gain = ac.createGain();
+        osc.type = type || 'triangle';
+        osc.frequency.setValueAtTime(freq, now);
+        if (endFreq) osc.frequency.exponentialRampToValueAtTime(endFreq, now + duration);
+        gain.gain.setValueAtTime(0.0001, now);
+        gain.gain.exponentialRampToValueAtTime(gainVal, now + 0.015);
+        gain.gain.exponentialRampToValueAtTime(0.0001, now + duration);
+        osc.connect(gain);
+        gain.connect(ac.destination);
+        osc.start(now);
+        osc.stop(now + duration + 0.02);
+      }
+
+      function playPluckSfx(isLovesMe) {
+        if (!soundEnabled) return;
+        if (isLovesMe) {
+          playTone(523.25, 0, 0.18, 'triangle', 0.09, 659.25);
+          playTone(783.99, 0.035, 0.20, 'sine', 0.06, 987.77);
+        } else {
+          playTone(440.0, 0, 0.20, 'triangle', 0.08, 349.23);
+          playTone(329.63, 0.04, 0.22, 'sine', 0.05, 293.66);
+        }
+      }
+
+      function playVerdictSfx(isLove) {
+        if (!soundEnabled) return;
+        if (isLove) {
+          [523.25, 659.25, 783.99, 1046.5].forEach((n, idx) => {
+            playTone(n, idx * 0.09, 0.42, 'triangle', 0.08);
+          });
+        } else {
+          [392.0, 349.23, 311.13, 261.63].forEach((n, idx) => {
+            playTone(n, idx * 0.11, 0.36, 'sine', 0.07);
+          });
+        }
+      }
+
+      function playRestartSfx() {
+        if (!soundEnabled) return;
+        playTone(329.63, 0, 0.14, 'sine', 0.05, 523.25);
+      }
+
+      // =========================================================================
+      // Game State
+      // =========================================================================
+      const game = {
+        totalPetals: 11,
+        lastCount: 0,
+        pluckedCount: 0,
+        petals: [],
+        fallingPetals: [],
+        settledPetals: [],
+        particles: [],
+        ripples: [],
+        shootingStar: null,
+        nextShootTime: 3.8,
+        statusKind: 'idle', // 'idle' | 'love' | 'not'
+        statusTimer: 0,
+        finished: false,
+        verdictLovesMe: true,
+        bannerDelay: 0,
+        bannerRevealAt: 0,
+        bannerShownAt: 0,
+        bannerBounds: null,
+        hoveredPetalId: -1,
+        recoil: 0,
+        recoilVel: 0,
+        lastPluckTime: 0,
+        time: 0
+      };
+
+      function pickPetalCount() {
+        // Default mode guarantees "LOVES ME!" via odd counts in [9, 14]
+        const pool = FAIR_MODE ? [9, 10, 11, 12, 13, 14] : [9, 11, 13];
+        const filtered = pool.filter((n) => n !== game.lastCount);
+        const candidates = filtered.length > 0 ? filtered : pool;
+        const chosen = candidates[Math.floor(Math.random() * candidates.length)];
+        game.lastCount = chosen;
+        return chosen;
+      }
+
+      function createFlower() {
+        const count = pickPetalCount();
+        game.totalPetals = count;
+        game.pluckedCount = 0;
+        game.petals = [];
+        game.fallingPetals = [];
+        game.settledPetals = [];
+        game.particles = [];
+        game.ripples = [];
+        game.statusKind = 'idle';
+        game.statusTimer = 0;
+        game.finished = false;
+        game.verdictLovesMe = true;
+        game.bannerDelay = 0;
+        game.bannerShownAt = 0;
+        game.bannerBounds = null;
+        game.hoveredPetalId = -1;
+        game.recoil = 0;
+        game.recoilVel = 0;
+
+        const basePhase = (Math.random() - 0.5) * 0.22;
+        for (let i = 0; i < count; i++) {
+          const baseAngle = -Math.PI * 0.5 + basePhase + (i * Math.PI * 2) / count;
+          const jitter = (Math.random() - 0.5) * 0.038;
+          game.petals.push({
+            id: i,
+            angle: baseAngle + jitter,
+            layer: i % 2,
+            lengthScale: 0.94 + Math.random() * 0.11,
+            widthScale: 0.95 + Math.random() * 0.10,
+            colorShift: (i % 3) * 0.16,
+            phase: Math.random() * Math.PI * 2,
+            plucked: false
+          });
+        }
+
+        pluckedCounterEl.textContent = 'Plucked: 0';
+        btnRestart.textContent = 'Restart';
+        liveStatusEl.textContent = 'New flower ready. Pluck a petal.';
+      }
+
+      // =========================================================================
+      // Responsive Grid Layout
+      // =========================================================================
+      function configureGrid() {
+        vw = window.innerWidth;
+        vh = window.innerHeight;
+        const mobile = vw <= 640;
+        dpr = Math.min(window.devicePixelRatio || 1, mobile ? 2.5 : 2);
+
+        canvas.width = Math.max(1, Math.floor(vw * dpr));
+        canvas.height = Math.max(1, Math.floor(vh * dpr));
+        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+        bgGradient = ctx.createLinearGradient(0, 0, 0, vh);
+        bgGradient.addColorStop(0, '#060814');
+        bgGradient.addColorStop(1, '#0d1024');
+
+        const topReserve = mobile ? 66 : 56;
+        const bottomReserve = mobile ? 80 : 64;
+        const sideMargin = mobile ? 8 : 16;
+
+        const usableW = Math.max(200, vw - sideMargin);
+        const usableH = Math.max(220, vh - topReserve - bottomReserve);
+
+        if (mobile) {
+          const desiredCols = vw < 360 ? 64 : 74;
+          const maxFontW = usableW / (desiredCols * 0.61);
+          const maxFontH = usableH / 56;
+          fontSize = Math.max(7.5, Math.min(10.0, Math.floor(Math.min(maxFontW, maxFontH) * 2) / 2));
+        } else {
+          const targetRows = vw < 1024 ? 72 : 78;
+          fontSize = Math.max(9.0, Math.min(12.5, Math.floor((usableH / targetRows) * 2) / 2));
+        }
+
+        ctx.font = `700 ${fontSize}px ${FONT_FAMILY}`;
+        const measuredW = ctx.measureText('@').width;
+
+        cellW = Math.max(4.0, Math.round(measuredW * 1.02 * dpr) / dpr);
+        cellH = Math.max(7.0, Math.round(fontSize * 1.12 * dpr) / dpr);
+
+        cols = Math.max(48, Math.min(240, Math.floor(usableW / cellW)));
+        rows = Math.max(36, Math.min(125, Math.floor(usableH / cellH)));
+
+        originX = Math.floor((vw - cols * cellW) * 0.5);
+        originY = Math.floor(topReserve + (usableH - rows * cellH) * 0.5);
+
+        const total = cols * rows;
+        charBuf = new Uint8Array(total);
+        rBuf = new Uint8Array(total);
+        gBuf = new Uint8Array(total);
+        bBuf = new Uint8Array(total);
+        zBuf = new Float32Array(total);
+        petalIdBuf = new Int16Array(total);
+
+        halfWorldW = (cols * 0.5 * cellW) / (rows * cellH);
+        flowerScale = Math.max(0.70, Math.min(1.06, halfWorldW / 0.255));
+        headX = 0;
+        headY = mobile ? 0.51 : 0.52;
+      }
+
+      // =========================================================================
+      // Allocation-Free Buffer & Color Helpers
+      // =========================================================================
+      function clearBuffers() {
+        charBuf.fill(32);
+        zBuf.fill(-1e9);
+        petalIdBuf.fill(-1);
+      }
+
+      function lerp(a, b, t) {
+        return a + (b - a) * t;
+      }
+
+      function clamp(v, lo, hi) {
+        return v < lo ? lo : v > hi ? hi : v;
+      }
+
+      function densityChar(brightness01) {
+        const clamped = clamp(brightness01, 0, 0.999);
+        const idx = Math.floor((1 - clamped) * DENSITY_RAMP.length);
+        return DENSITY_RAMP.charCodeAt(idx);
+      }
+
+      function plotCell(col, row, z, code, r, g, b, petalId = -1) {
+        if (col < 0 || col >= cols || row < 0 || row >= rows) return;
+        const idx = row * cols + col;
+        if (z < zBuf[idx]) return;
+        zBuf[idx] = z;
+        charBuf[idx] = code;
+        rBuf[idx] = r < 0 ? 0 : r > 255 ? 255 : r | 0;
+        gBuf[idx] = g < 0 ? 0 : g > 255 ? 255 : g | 0;
+        bBuf[idx] = b < 0 ? 0 : b > 255 ? 255 : b | 0;
+        petalIdBuf[idx] = petalId;
+      }
+
+      function plotWorld(wx, wy, z, code, r, g, b, petalId = -1) {
+        const col = Math.floor(cols * 0.5 + (wx * rows * cellH) / cellW);
+        const row = Math.floor(wy * rows);
+        plotCell(col, row, z, code, r, g, b, petalId);
+      }
+
+      function drawTextCentered(row, text, z, r, g, b) {
+        if (row < 0 || row >= rows) return;
+        const startCol = Math.floor((cols - text.length) * 0.5);
+        for (let i = 0; i < text.length; i++) {
+          const ch = text.charCodeAt(i);
+          if (ch === 32) continue;
+          plotCell(startCol + i, row, z, ch, r, g, b, -1);
+        }
+      }
+
+      // =========================================================================
+      // Scene Layer 1: Detailed Starry Night Sky, Nebula, Moon & Shooting Star
+      // =========================================================================
+      function renderSky(t, cx, cy) {
+        const motion = REDUCED_MOTION ? 0.25 : 1;
+        const skyMaxRow = Math.floor(rows * 0.74);
+
+        // Subtle Milky Way diagonal nebula dithering + soft radial flower aura
+        const auraR = 0.29 * flowerScale;
+        const auraTint = game.statusKind === 'love'
+          ? COL.PETAL_PINK
+          : game.statusKind === 'not'
+            ? COL.PETAL_LAV
+            : COL.STAR_LAV;
+        const auraStrength = game.statusKind === 'idle' ? 0.25 : 0.48;
+
+        for (let row = 0; row < skyMaxRow; row++) {
+          const wy = (row + 0.5) / rows;
+          for (let col = 0; col < cols; col++) {
+            const nx = col / Math.max(1, cols - 1);
+            const hash = ((col * 73856093) ^ (row * 19349663)) >>> 0;
+
+            // Diagonal Milky Way band from bottom-left to top-right
+            const bandDist = Math.abs((wy - 0.58) + (nx - 0.5) * 0.45);
+            if (bandDist < 0.19 && (hash % 17) === 0) {
+              const bandFade = 1 - bandDist / 0.19;
+              const ch = (hash % 3 === 0) ? 58 : 46; // ':' or '.'
+              plotCell(col, row, -112, ch, 26 + bandFade * 24, 30 + bandFade * 22, 68 + bandFade * 42);
+              continue;
+            }
+
+            // Soft radial flower aura dithering behind bloom
+            const wx = ((col + 0.5) - cols * 0.5) * cellW / (rows * cellH);
+            const dist = Math.hypot(wx - cx, wy - cy);
+            if (dist < auraR && (hash % 11) === 0) {
+              const falloff = (1 - dist / auraR) * auraStrength;
+              plotCell(
+                col,
+                row,
+                -108,
+                46,
+                auraTint[0] * falloff * 0.42,
+                auraTint[1] * falloff * 0.42,
+                auraTint[2] * falloff * 0.42
+              );
+            }
+          }
+        }
+
+        // Shaded ASCII Crescent Moon (positioned cleanly clear of centered headers/banners)
+        const mobile = vw <= 640;
+        const moonWx = mobile ? -halfWorldW * 0.76 : -halfWorldW * 0.78;
+        const moonWy = mobile ? 0.115 : 0.165;
+        const moonR = (mobile ? 0.042 : 0.068) * flowerScale;
+        const mSpanC = Math.ceil((moonR * 1.6 * rows * cellH) / cellW) + 2;
+        const mSpanR = Math.ceil(moonR * 1.6 * rows) + 2;
+        const mCol = Math.floor(cols * 0.5 + (moonWx * rows * cellH) / cellW);
+        const mRow = Math.floor(moonWy * rows);
+
+        for (let dr = -mSpanR; dr <= mSpanR; dr++) {
+          for (let dc = -mSpanC; dc <= mSpanC; dc++) {
+            const col = mCol + dc;
+            const row = mRow + dr;
+            const wx = ((col + 0.5) - cols * 0.5) * cellW / (rows * cellH);
+            const wy = (row + 0.5) / rows;
+            const dx = (wx - moonWx) / moonR;
+            const dy = (wy - moonWy) / moonR;
+            const r2 = dx * dx + dy * dy;
+
+            if (r2 <= 1.0) {
+              // Offset shadow sphere carves the crescent
+              const sdx = dx - 0.46;
+              const sdy = dy + 0.22;
+              if (sdx * sdx + sdy * sdy < 0.78) continue;
+
+              const nz = Math.sqrt(Math.max(0, 1 - r2));
+              const crater = 0.08 * Math.sin(dx * 11 + dy * 7) * Math.cos(dy * 13 - dx * 5);
+              const light = clamp(0.45 + dx * -0.35 + dy * -0.25 + nz * 0.5 + crater, 0.2, 0.99);
+              const ch = densityChar(light);
+              const k = clamp((light - 0.2) / 0.8, 0, 1);
+              plotCell(
+                col,
+                row,
+                -90,
+                ch,
+                lerp(COL.MOON_DIM[0], COL.MOON_CREAM[0], k),
+                lerp(COL.MOON_DIM[1], COL.MOON_CREAM[1], k),
+                lerp(COL.MOON_DIM[2], COL.MOON_CREAM[2], k)
+              );
+            } else if (r2 < 1.95 && ((col * 17 + row * 31) & 7) === 0) {
+              // Faint lunar halo
+              const halo = 1 - (r2 - 1.0) / 0.95;
+              plotCell(col, row, -95, 46, 55 * halo + 20, 70 * halo + 24, 128 * halo + 40);
+            }
+          }
+        }
+
+        // Multi-tier twinkling stars + 4-point cross-glint hero stars
+        for (let i = 0; i < seeded.stars.length; i++) {
+          const s = seeded.stars[i];
+          const col = Math.floor(s.nx * cols);
+          const row = Math.floor(s.ny * rows);
+          const wave = 0.5 + 0.5 * Math.sin(t * s.speed * motion + s.phase);
+
+          if (s.tier === 2) {
+            const lum = 0.65 + wave * 0.35;
+            plotCell(col, row, -98, 42, s.tint[0] * lum, s.tint[1] * lum, s.tint[2] * lum);
+            if (wave > 0.35) {
+              const armLum = lum * 0.62;
+              plotCell(col - 1, row, -99, 45, s.tint[0] * armLum, s.tint[1] * armLum, s.tint[2] * armLum);
+              plotCell(col + 1, row, -99, 45, s.tint[0] * armLum, s.tint[1] * armLum, s.tint[2] * armLum);
+              plotCell(col, row - 1, -99, 124, s.tint[0] * armLum, s.tint[1] * armLum, s.tint[2] * armLum);
+              plotCell(col, row + 1, -99, 124, s.tint[0] * armLum, s.tint[1] * armLum, s.tint[2] * armLum);
+            }
+            continue;
+          }
+
+          let ch = 46;
+          let lum = 0.38 + wave * 0.62;
+          if (s.tier === 1 && wave > 0.72) {
+            ch = 42; // '*'
+          } else if (s.tier === 1 && wave > 0.38) {
+            ch = 43; // '+'
+            lum *= 0.85;
+          } else if (s.tier === 0 && wave < 0.22) {
+            continue;
+          }
+          plotCell(col, row, -100, ch, s.tint[0] * lum, s.tint[1] * lum, s.tint[2] * lum);
+        }
+
+        // Periodic ASCII shooting star
+        if (game.shootingStar) {
+          const st = game.shootingStar;
+          const tail = 9;
+          for (let i = 0; i < tail; i++) {
+            const frac = 1 - i / tail;
+            const wx = st.x - st.vx * i * 0.012;
+            const wy = st.y - st.vy * i * 0.012;
+            const ch = i === 0 ? 42 : i < 3 ? 61 : i < 6 ? 45 : 46; // '*','=','-','.'
+            plotWorld(wx, wy, -88, ch, 255 * frac, 245 * frac, 200 * frac);
+          }
+        }
+      }
+
+      // =========================================================================
+      // Scene Layer 2: 3-Layer Rolling Hills, Meadow Grass & Fireflies
+      // =========================================================================
+      function meadowCrestY(nx) {
+        return 0.78 + 0.032 * Math.cos(nx * 4.4 - 0.5) + 0.016 * Math.sin(nx * 8.6 + 1.1);
+      }
+
+      function renderHillsAndMeadow(t) {
+        const hillChars = [59, 58, 45]; // ';', ':', '-'
+
+        for (let col = 0; col < cols; col++) {
+          const nx = col / Math.max(1, cols - 1);
+
+          const farWave = 0.68 + 0.042 * Math.sin(nx * 5.1 + 0.5) + 0.018 * Math.cos(nx * 11.2 - 0.3);
+          const midWave = 0.73 + 0.036 * Math.sin(nx * 6.3 + 2.2) + 0.015 * Math.cos(nx * 9.8);
+          const nearWave = meadowCrestY(nx);
+
+          const farTop = Math.floor(farWave * rows);
+          const midTop = Math.floor(midWave * rows);
+          const nearTop = Math.floor(nearWave * rows);
+
+          for (let row = Math.min(farTop, midTop, nearTop); row < rows; row++) {
+            const hash = ((col * 2654435761) ^ (row * 374761393)) >>> 0;
+
+            if (row >= nearTop) {
+              const depth = (row - nearTop) / Math.max(1, rows - nearTop);
+              const crest = row === nearTop;
+              const ch = crest ? ((hash % 4 === 0) ? 46 : 45) : hillChars[hash % 3];
+              const sway = 0.08 * Math.sin(nx * 14 + t * 0.6 + row * 0.4);
+              const k = clamp(depth * 0.85 + sway, 0, 1);
+              const c1 = crest ? COL.HILL_GREEN_LIGHT : COL.HILL_GREEN_MID;
+              const c2 = crest ? COL.HILL_GREEN_LIGHT : COL.HILL_GREEN_DARK;
+              plotCell(col, row, -40, ch, lerp(c1[0], c2[0], k), lerp(c1[1], c2[1], k), lerp(c1[2], c2[2], k));
+            } else if (row >= midTop) {
+              const depth = (row - midTop) / Math.max(1, nearTop - midTop + 2);
+              const crest = row === midTop;
+              const ch = crest ? 45 : hillChars[hash % 3];
+              const k = clamp(depth * 0.9, 0, 1);
+              const c1 = crest ? COL.HILL_TEAL_LIGHT : COL.HILL_TEAL_MID;
+              const c2 = crest ? COL.HILL_TEAL_LIGHT : COL.HILL_TEAL_DARK;
+              plotCell(col, row, -46, ch, lerp(c1[0], c2[0], k), lerp(c1[1], c2[1], k), lerp(c1[2], c2[2], k));
+            } else if (row >= farTop) {
+              const depth = (row - farTop) / Math.max(1, midTop - farTop + 2);
+              const crest = row === farTop;
+              const ch = crest ? ((hash % 5 === 0) ? 46 : 45) : hillChars[hash % 3];
+              const k = clamp(depth * 0.9, 0, 1);
+              const c1 = crest ? COL.HILL_BLUE_LIGHT : COL.HILL_BLUE_MID;
+              const c2 = crest ? COL.HILL_BLUE_LIGHT : COL.HILL_BLUE_DARK;
+              plotCell(col, row, -52, ch, lerp(c1[0], c2[0], k), lerp(c1[1], c2[1], k), lerp(c1[2], c2[2], k));
+            }
+          }
+        }
+
+        // Swaying meadow grass blades & tiny wildflower specks along the foreground hill
+        const motion = REDUCED_MOTION ? 0.25 : 1;
+        for (let i = 0; i < seeded.grassTufts.length; i++) {
+          const g = seeded.grassTufts[i];
+          const baseCol = Math.floor(g.nx * (cols - 2)) + 1;
+          const baseRow = Math.floor(meadowCrestY(g.nx) * rows);
+          const sway = Math.sin(t * 1.8 * motion + g.phase) * 0.9;
+
+          for (let h = 0; h < g.height; h++) {
+            const frac = h / Math.max(1, g.height - 1);
+            const dc = Math.round((g.lean + sway) * frac);
+            const r = baseRow - h;
+            const c = baseCol + dc;
+            const ch = h === g.height - 1 ? (dc > 0 ? 47 : dc < 0 ? 92 : 59) : 58; // '/','\',';',':'
+            plotCell(
+              c,
+              r,
+              -30,
+              ch,
+              lerp(COL.STEM_DARK[0], COL.STEM_MID[0], frac * 0.7),
+              lerp(COL.STEM_DARK[1], COL.STEM_MID[1], frac * 0.7),
+              lerp(COL.STEM_DARK[2], COL.STEM_MID[2], frac * 0.7)
+            );
+            if (g.hasFlower && h === g.height - 1) {
+              plotCell(c, r - 1, -29, 42, g.flowerTint[0] * 0.85, g.flowerTint[1] * 0.85, g.flowerTint[2] * 0.85);
+            }
+          }
+        }
+
+        // Warm glowing fireflies floating lazily over the hills
+        for (let i = 0; i < seeded.fireflies.length; i++) {
+          const f = seeded.fireflies[i];
+          const fx = f.nx + Math.sin(t * f.speed * motion + f.phase) * f.ampX;
+          const fy = f.ny + Math.cos(t * f.speed * 0.8 * motion + f.phase) * f.ampY;
+          const glow = Math.pow(0.5 + 0.5 * Math.sin(t * 2.4 * motion + f.phase * 1.7), 1.6);
+          if (glow < 0.18) continue;
+          const ch = glow > 0.78 ? 42 : glow > 0.46 ? 43 : 46; // '*','+','.'
+          plotCell(
+            Math.floor(fx * cols),
+            Math.floor(fy * rows),
+            52,
+            ch,
+            f.color[0] * glow,
+            f.color[1] * glow,
+            f.color[2] * glow
+          );
+        }
+      }
+
+      // =========================================================================
+      // Scene Layer 3: Ultra-Detailed Sculpted Flower
+      // =========================================================================
+      function getFlowerCenter(t) {
+        const motion = REDUCED_MOTION ? 0.25 : 1;
+        const swayX = Math.sin(t * 1.35 * motion) * 0.010 * flowerScale + game.recoil * 0.014;
+        const swayY = Math.abs(Math.sin(t * 1.35 * motion)) * 0.002 * flowerScale + Math.abs(game.recoil) * 0.004;
+        return { cx: headX + swayX, cy: headY + swayY };
+      }
+
+      function renderStemAndLeaves(t, cx, cy) {
+        const motion = REDUCED_MOTION ? 0.25 : 1;
+        const baseY = 0.97;
+        const startY = cy + 0.025 * flowerScale;
+        const stemSteps = Math.max(120, Math.floor(rows * 2.5));
+        const stemBaseR = 0.0145 * flowerScale;
+
+        const stemSample = (s) => {
+          const y = lerp(startY, baseY, s);
+          const curve = Math.sin(s * Math.PI * 1.15) * 0.018 * flowerScale;
+          const x = lerp(cx, 0, s * s) + curve * (1 - s * 0.35);
+          return { x, y };
+        };
+
+        // Ribbed 3D stem with flared receptacle neck at s < 0.09
+        for (let i = 0; i <= stemSteps; i++) {
+          const s = i / stemSteps;
+          const pt = stemSample(s);
+          const neckFlare = s < 0.09 ? (1 - s / 0.09) * 0.55 : 0;
+          const r = stemBaseR * (1.0 - 0.14 * Math.sin(s * Math.PI) + neckFlare);
+          const span = Math.max(1, Math.ceil((r * rows * cellH) / cellW) + 1);
+          const centerCol = Math.floor(cols * 0.5 + (pt.x * rows * cellH) / cellW);
+          const row = Math.floor(pt.y * rows);
+
+          for (let dc = -span; dc <= span; dc++) {
+            const col = centerCol + dc;
+            const wx = ((col + 0.5) - cols * 0.5) * cellW / (rows * cellH);
+            const dx = (wx - pt.x) / r;
+            if (Math.abs(dx) > 1.0) continue;
+            const nz = Math.sqrt(Math.max(0, 1 - dx * dx));
+            const ridge = 0.06 * Math.cos(dx * Math.PI * 3.0);
+            const shade = clamp(0.45 + dx * -0.30 + nz * 0.44 + ridge, 0.14, 0.99);
+            const ch = densityChar(shade);
+            let c1, c2, k;
+            if (shade > 0.72) {
+              c1 = COL.STEM_MID; c2 = COL.STEM_LIGHT; k = (shade - 0.72) / 0.28;
+            } else if (shade > 0.40) {
+              c1 = COL.STEM_DARK; c2 = COL.STEM_MID; k = (shade - 0.40) / 0.32;
+            } else {
+              c1 = COL.STEM_DEEP; c2 = COL.STEM_DARK; k = shade / 0.40;
+            }
+            plotCell(col, row, 10 + nz * 2.5, ch, lerp(c1[0], c2[0], k), lerp(c1[1], c2[1], k), lerp(c1[2], c2[2], k));
+          }
+        }
+
+        // 4 Layered Sculpted 3D Bouquet Leaves with midrib & veins
+        const leaves = [
+          { attachS: 0.40, side: -1, len: 0.185, maxW: 0.041, droop: 0.048, arch: -0.058, zBias: 1.5 },
+          { attachS: 0.54, side: 1, len: 0.200, maxW: 0.043, droop: 0.038, arch: -0.066, zBias: 1.5 },
+          { attachS: 0.66, side: -1, len: 0.145, maxW: 0.031, droop: 0.052, arch: -0.038, zBias: 0.2 },
+          { attachS: 0.74, side: 1, len: 0.135, maxW: 0.028, droop: 0.044, arch: -0.032, zBias: 0.2 }
+        ];
+
+        for (let l = 0; l < leaves.length; l++) {
+          const lf = leaves[l];
+          const root = stemSample(lf.attachS);
+          const breeze = Math.sin(t * 1.6 * motion + l * 1.6) * 0.009 * flowerScale;
+          const len = lf.len * flowerScale;
+          const maxW = lf.maxW * flowerScale;
+          const vSteps = 56;
+          const uSteps = 22;
+
+          for (let iv = 0; iv <= vSteps; iv++) {
+            const v = iv / vSteps;
+            const spineX = root.x + lf.side * len * v;
+            const spineY =
+              root.y +
+              lf.arch * flowerScale * Math.sin(v * Math.PI * 0.86) +
+              lf.droop * flowerScale * v * v +
+              breeze * v;
+            const halfW = maxW * Math.sin(Math.PI * Math.pow(v, 0.66));
+            const tipSlope = Math.cos(v * Math.PI * 0.85);
+
+            for (let iu = -uSteps; iu <= uSteps; iu++) {
+              const u = iu / uSteps;
+              const wx = spineX + u * halfW * 0.24;
+              const wy = spineY + u * halfW;
+              const isEdge = Math.abs(u) > 0.85 || v > 0.92;
+              const rib = Math.exp(-u * u * 20) * (1 - v * 0.35);
+              const veins = 0.09 * Math.cos((u * 4.5 - v * 2.2) * Math.PI);
+              const curl = (1 - u * u) * 0.45;
+              const shade = clamp(0.32 + curl * 0.42 + rib * 0.32 + veins - tipSlope * 0.12 - (isEdge ? 0.18 : 0), 0.10, 0.98);
+              const ch = isEdge ? (v > 0.89 ? 46 : 58) : densityChar(shade);
+              const z = 11 + lf.zBias + curl * 2.5 - v * 0.6;
+              let c1, c2, k;
+              if (rib > 0.52 || shade > 0.72) {
+                c1 = COL.STEM_MID; c2 = COL.STEM_LIGHT; k = clamp((shade - 0.58) / 0.40, 0, 1);
+              } else {
+                c1 = COL.STEM_DARK; c2 = COL.STEM_MID; k = clamp(shade / 0.72, 0, 1);
+              }
+              plotWorld(wx, wy, z, ch, lerp(c1[0], c2[0], k), lerp(c1[1], c2[1], k), lerp(c1[2], c2[2], k));
+            }
+          }
+        }
+
+        // 8 Fluted Green Calyx Sepals tucked under the flower crown
+        for (let i = 0; i < 8; i++) {
+          const ang = -Math.PI + (i * Math.PI * 2) / 8 + 0.2;
+          const cosA = Math.cos(ang);
+          const sinA = Math.sin(ang);
+          const sLen = 0.074 * flowerScale;
+          for (let iv = 2; iv <= 22; iv++) {
+            const v = iv / 22;
+            const w = 0.016 * flowerScale * (1 - v * 0.85);
+            for (let iu = -7; iu <= 7; iu++) {
+              const u = iu / 7;
+              const lx = v * sLen;
+              const ly = u * w;
+              const wx = cx + cosA * lx - sinA * ly;
+              const wy = cy + sinA * lx + cosA * ly;
+              const shade = clamp(0.42 + (1 - Math.abs(u)) * 0.38 - v * 0.10, 0.18, 0.94);
+              const c1 = shade > 0.65 ? COL.STEM_MID : COL.STEM_DARK;
+              const c2 = shade > 0.65 ? COL.STEM_LIGHT : COL.STEM_MID;
+              const k = shade > 0.65 ? (shade - 0.65) / 0.35 : shade / 0.65;
+              plotWorld(wx, wy, 15 + (1 - v) * 0.6, densityChar(shade), lerp(c1[0], c2[0], k), lerp(c1[1], c2[1], k), lerp(c1[2], c2[2], k));
+            }
+          }
+        }
+      }
+
+      function renderPetalShape(opts) {
+        const {
+          originWx,
+          originWy,
+          angle,
+          len,
+          maxHalfW,
+          baseZ,
+          pitchScale,
+          rollCos,
+          petalId,
+          isHovered,
+          colorShift,
+          alphaScale,
+          vStepsOverride,
+          uStepsOverride
+        } = opts;
+
+        const cosA = Math.cos(angle);
+        const sinA = Math.sin(angle);
+        const vSteps = vStepsOverride || 58;
+        const uSteps = uStepsOverride || 26;
+        const a = alphaScale === undefined ? 1 : alphaScale;
+        const pinkBias = 0.5 + 0.5 * Math.sin(colorShift * 6.0);
+
+        for (let iv = 2; iv <= vSteps; iv++) {
+          const v = iv / vSteps;
+          // Scalloped obovate silhouette with delicate notched tip
+          const scallop = 1 + 0.03 * Math.cos(v * Math.PI * 2.0);
+          const profile = Math.sin(Math.PI * Math.pow(v, 0.70)) * (0.42 + 0.58 * Math.sin(Math.PI * 0.5 * v)) * scallop;
+          const halfW = maxHalfW * profile * Math.max(0.18, Math.abs(rollCos));
+          const radial = len * v * pitchScale;
+          const throatGlow = Math.exp(-v * v * 18.0) * 0.28;
+
+          for (let iu = -uSteps; iu <= uSteps; iu++) {
+            const u = iu / uSteps;
+            const localX = radial;
+            const localY = u * halfW;
+
+            const wx = originWx + cosA * localX - sinA * localY;
+            const wy = originWy + sinA * localX + cosA * localY;
+
+            // Longitudinal botanical veining + 3D cupped surface normal
+            const veins = Math.cos(u * Math.PI * 5.0) * 0.09 * (1 - v * 0.25);
+            const cup = (u * u - 0.35) * 0.55;
+            const arch = Math.cos(v * Math.PI * 0.65) * 0.45;
+            const nx = cosA * arch - sinA * u * 0.68;
+            const ny = sinA * arch + cosA * u * 0.68;
+            const nz = Math.sqrt(Math.max(0.15, 1.0 - nx * nx * 0.45 - ny * ny * 0.45));
+
+            const lightDot = clamp(nx * -0.38 + ny * -0.52 + nz * 0.76, 0, 1);
+            const spec = Math.pow(clamp(nz * 0.86 - ny * 0.34, 0, 1), 6) * 0.48;
+            const ao = v < 0.24 ? (0.24 - v) * 0.45 : 0;
+            const isEdge = Math.abs(u) > 0.87 || v > 0.92;
+
+            let shade = clamp(0.26 + lightDot * 0.66 + spec + veins - cup * 0.14 - ao, 0.08, 0.99);
+            if (isHovered) shade = clamp(shade + 0.16, 0, 0.99);
+
+            let ch;
+            if (isEdge) {
+              ch = v > 0.94 ? 46 : (Math.abs(u) > 0.94 ? 58 : 59); // '.', ':', ';' crisp outline
+            } else {
+              ch = densityChar(shade);
+            }
+
+            // Inline allocation-free color mixing: off-white -> pastel pink -> lavender + warm golden throat glow
+            const pinkF = clamp((1 - v) * 0.82 + pinkBias * 0.18, 0, 1) * 0.68;
+            const lavF = clamp(Math.abs(u) * 0.66 + v * 0.40 - 0.18, 0, 1) * 0.64;
+
+            let cr = lerp(COL.PETAL_WHITE[0], COL.PETAL_PINK[0], pinkF);
+            let cg = lerp(COL.PETAL_WHITE[1], COL.PETAL_PINK[1], pinkF);
+            let cb = lerp(COL.PETAL_WHITE[2], COL.PETAL_PINK[2], pinkF);
+
+            cr = lerp(cr, COL.PETAL_LAV[0], lavF);
+            cg = lerp(cg, COL.PETAL_LAV[1], lavF);
+            cb = lerp(cb, COL.PETAL_LAV[2], lavF);
+
+            if (throatGlow > 0.02) {
+              cr = lerp(cr, COL.CENTER_GOLD[0], throatGlow);
+              cg = lerp(cg, COL.CENTER_GOLD[1], throatGlow);
+              cb = lerp(cb, COL.CENTER_GOLD[2], throatGlow);
+            }
+
+            if (shade > 0.76) {
+              const sk = clamp((shade - 0.76) / 0.24 + spec * 0.5, 0, 0.88);
+              cr = lerp(cr, COL.PETAL_PEAK[0], sk);
+              cg = lerp(cg, COL.PETAL_PEAK[1], sk);
+              cb = lerp(cb, COL.PETAL_PEAK[2], sk);
+            } else if (shade < 0.42) {
+              const dr = lerp(COL.PETAL_LAV[0], COL.PETAL_PINK[0], pinkF * 0.5);
+              const dg = lerp(COL.PETAL_LAV[1], COL.PETAL_PINK[1], pinkF * 0.5);
+              const db = lerp(COL.PETAL_LAV[2], COL.PETAL_PINK[2], pinkF * 0.5);
+              const dk = clamp(0.45 + shade, 0, 1);
+              cr = lerp(dr, cr, dk);
+              cg = lerp(dg, cg, dk);
+              cb = lerp(db, cb, dk);
+            }
+
+            if (isEdge) {
+              const ec = v < 0.5 ? COL.PETAL_PINK : COL.PETAL_LAV;
+              cr = lerp(cr, ec[0], 0.68);
+              cg = lerp(cg, ec[1], 0.68);
+              cb = lerp(cb, ec[2], 0.68);
+            }
+
+            if (isHovered) {
+              cr = lerp(cr, COL.PETAL_PEAK[0], 0.45);
+              cg = lerp(cg, COL.PETAL_PEAK[1], 0.45);
+              cb = lerp(cb, COL.PETAL_PEAK[2], 0.45);
+            }
+
+            const z = baseZ + (1 - Math.abs(u)) * 1.9 + v * 1.1 + (isHovered ? 3.5 : 0);
+            plotWorld(wx, wy, z, ch, cr * a, cg * a, cb * a, petalId);
+          }
+        }
+      }
+
+      function renderFlower(t, cx, cy) {
+        const motion = REDUCED_MOTION ? 0.25 : 1;
+        const baseLen = 0.180 * flowerScale;
+        const baseHalfW = 0.046 * flowerScale;
+
+        for (let i = 0; i < game.petals.length; i++) {
+          const p = game.petals[i];
+          if (p.plucked) continue;
+
+          const isHovered = p.id === game.hoveredPetalId && !game.finished;
+          const flutter = Math.sin(t * 2.1 * motion + p.phase) * 0.025;
+          const hoverBoost = isHovered ? 1.07 : 1.0;
+
+          renderPetalShape({
+            originWx: cx,
+            originWy: cy,
+            angle: p.angle + flutter,
+            len: baseLen * p.lengthScale * hoverBoost,
+            maxHalfW: baseHalfW * p.widthScale * hoverBoost,
+            baseZ: 22 + p.layer * 3.0,
+            pitchScale: 1.0,
+            rollCos: 1.0,
+            petalId: p.id,
+            isHovered,
+            colorShift: p.colorShift
+          });
+        }
+
+        // Golden stamen / pollen crown encircling the center dome
+        const pollenCount = 24;
+        const pollenR = 0.065 * flowerScale;
+        for (let i = 0; i < pollenCount; i++) {
+          const a = (i * Math.PI * 2) / pollenCount + t * 0.05 * motion;
+          const bob = 1 + 0.06 * Math.sin(t * 2.5 * motion + i);
+          const wx = cx + Math.cos(a) * pollenR * bob;
+          const wy = cy + Math.sin(a) * pollenR * bob;
+          const ch = i % 3 === 0 ? 42 : i % 3 === 1 ? 43 : 46; // '*','+','.'
+          plotWorld(wx, wy, 40, ch, COL.CENTER_SPEC[0], COL.CENTER_SPEC[1], COL.CENTER_SPEC[2]);
+        }
+
+        // Intricate Dual-Spiral Fibonacci Golden/Amber Center Dome ('@' and '#')
+        const centerR = 0.062 * flowerScale;
+        const spanC = Math.max(2, Math.ceil((centerR * rows * cellH) / cellW) + 1);
+        const spanR = Math.max(2, Math.ceil(centerR * rows) + 1);
+        const cCol = Math.floor(cols * 0.5 + (cx * rows * cellH) / cellW);
+        const cRow = Math.floor(cy * rows);
+
+        for (let dr = -spanR; dr <= spanR; dr++) {
+          for (let dc = -spanC; dc <= spanC; dc++) {
+            const col = cCol + dc;
+            const row = cRow + dr;
+            const wx = ((col + 0.5) - cols * 0.5) * cellW / (rows * cellH);
+            const wy = (row + 0.5) / rows;
+            const dx = (wx - cx) / centerR;
+            const dy = (wy - cy) / centerR;
+            const r2 = dx * dx + dy * dy;
+            if (r2 > 1.0) continue;
+
+            const r = Math.sqrt(r2);
+            const nz = Math.sqrt(Math.max(0, 1 - r2));
+            const theta = Math.atan2(dy, dx);
+            // Intersecting 13 & 21 Fibonacci floret spirals
+            const spiral1 = Math.sin(theta * 13 + r * 28);
+            const spiral2 = Math.cos(theta * 21 - r * 22);
+            const seeds = 0.5 + 0.5 * spiral1 * spiral2;
+            const light = clamp(dx * -0.35 + dy * -0.45 + nz * 0.80, 0, 1);
+            const shade = clamp(0.30 + light * 0.55 + seeds * 0.16 - r * 0.18, 0.15, 0.99);
+
+            let ch = 64; // '@'
+            if (r > 0.88) {
+              ch = light > 0.45 ? 37 : 42; // '%' or '*'
+            } else if (shade < 0.60) {
+              ch = 35; // '#'
+            } else if (shade > 0.84 || seeds > 0.50) {
+              ch = 64; // '@'
+            } else {
+              ch = 35; // '#'
+            }
+
+            let c1, c2, k;
+            if (shade > 0.80) {
+              c1 = COL.CENTER_GOLD; c2 = COL.CENTER_SPEC; k = (shade - 0.80) / 0.20;
+            } else if (shade > 0.48) {
+              c1 = COL.CENTER_AMBER; c2 = COL.CENTER_GOLD; k = (shade - 0.48) / 0.32;
+            } else {
+              c1 = COL.CENTER_DEEP; c2 = COL.CENTER_AMBER; k = shade / 0.48;
+            }
+            plotCell(col, row, 42 + nz * 6, ch, lerp(c1[0], c2[0], k), lerp(c1[1], c2[1], k), lerp(c1[2], c2[2], k), -1);
+          }
+        }
+      }
+
+      // =========================================================================
+      // Scene Layer 4: Falling & Settled Meadow ASCII Petals
+      // =========================================================================
+      function renderFallingAndSettledPetals() {
+        // Settled petals resting peacefully on the dark forest green meadow hill
+        for (let i = 0; i < game.settledPetals.length; i++) {
+          const sp = game.settledPetals[i];
+          renderPetalShape({
+            originWx: sp.x,
+            originWy: sp.y,
+            angle: sp.rot,
+            len: sp.len * 0.82,
+            maxHalfW: sp.halfW * 0.78,
+            baseZ: -25 + i * 0.2,
+            pitchScale: 0.72,
+            rollCos: 0.55,
+            petalId: -1,
+            isHovered: false,
+            colorShift: sp.colorShift,
+            alphaScale: 0.78,
+            vStepsOverride: 28,
+            uStepsOverride: 14
+          });
+        }
+
+        // Active falling petals
+        for (let i = 0; i < game.fallingPetals.length; i++) {
+          const fp = game.fallingPetals[i];
+          const rollCos = Math.cos(fp.tumble);
+          const pitchScale = 0.55 + 0.45 * Math.abs(Math.cos(fp.tumble * 0.7));
+          const halfLen = fp.len * 0.45;
+          const ox = fp.x - Math.cos(fp.rot) * halfLen;
+          const oy = fp.y - Math.sin(fp.rot) * halfLen;
+
+          renderPetalShape({
+            originWx: ox,
+            originWy: oy,
+            angle: fp.rot,
+            len: fp.len,
+            maxHalfW: fp.halfW,
+            baseZ: 60 + i * 0.2,
+            pitchScale,
+            rollCos,
+            petalId: -1,
+            isHovered: false,
+            colorShift: fp.colorShift,
+            alphaScale: 1,
+            vStepsOverride: 36,
+            uStepsOverride: 16
+          });
+        }
+      }
+
+      // =========================================================================
+      // Scene Layer 5: Double Concentric Ripples & Sparkle Particles
+      // =========================================================================
+      function renderRipplesAndParticles() {
+        for (let i = 0; i < game.ripples.length; i++) {
+          const rp = game.ripples[i];
+          const progress = rp.age / rp.maxAge;
+          const alpha = 1 - progress;
+          const radius = (0.06 + progress * 0.25) * flowerScale;
+          const segs = 44;
+          const ringChar = progress < 0.3 ? 42 : progress < 0.65 ? 43 : progress < 0.85 ? 58 : 46;
+
+          for (let s = 0; s < segs; s++) {
+            const a = (s * Math.PI * 2) / segs + rp.spin * progress;
+            plotWorld(
+              rp.x + Math.cos(a) * radius,
+              rp.y + Math.sin(a) * radius,
+              88,
+              ringChar,
+              rp.color[0] * alpha,
+              rp.color[1] * alpha,
+              rp.color[2] * alpha
+            );
+            // Inner echo ripple
+            if (s % 2 === 0 && progress > 0.14) {
+              const r2 = radius * 0.66;
+              plotWorld(
+                rp.x + Math.cos(a - 0.12) * r2,
+                rp.y + Math.sin(a - 0.12) * r2,
+                87,
+                46,
+                rp.color[0] * alpha * 0.65,
+                rp.color[1] * alpha * 0.65,
+                rp.color[2] * alpha * 0.65
+              );
+            }
+          }
+        }
+
+        for (let i = 0; i < game.particles.length; i++) {
+          const pt = game.particles[i];
+          const lifeFrac = 1 - pt.age / pt.maxAge;
+          if (lifeFrac <= 0) continue;
+          const twinkle = 0.6 + 0.4 * Math.sin(game.time * 9 + pt.phase);
+          const a = clamp(lifeFrac * twinkle, 0, 1);
+          plotWorld(pt.x, pt.y, 92, pt.charCode, pt.color[0] * a, pt.color[1] * a, pt.color[2] * a);
+        }
+      }
+
+      // =========================================================================
+      // Scene Layer 6: BIG Multi-Row Block In-Grid Status Message
+      // =========================================================================
+      function renderStatusBanner(t) {
+        if (game.finished && game.bannerDelay <= 0) return;
+        const midCol = cols * 0.5;
+        const topRow = Math.max(2, Math.floor(rows * 0.04));
+
+        if (game.statusKind === 'idle') {
+          const singleW = measureBlockText('PLUCK A PETAL', FONT_5X4, 1);
+          if (singleW <= cols - 8) {
+            renderBlockText(
+              'PLUCK A PETAL',
+              midCol,
+              topRow,
+              95,
+              FONT_5X4,
+              1,
+              [255, 248, 224],
+              [220, 232, 255],
+              [169, 188, 255],
+              t
+            );
+            drawTextCentered(topRow + 6, '~ Click the flower or press SPACE ~', 95, 196, 210, 248);
+          } else {
+            renderBlockText('PLUCK', midCol, topRow, 95, FONT_5X4, 1, [255, 248, 224], [220, 232, 255], [169, 188, 255], t);
+            renderBlockText('A PETAL', midCol, topRow + 6, 95, FONT_5X4, 1, [255, 248, 224], [220, 232, 255], [169, 188, 255], t);
+            drawTextCentered(topRow + 12, '~ Tap flower or press SPACE ~', 95, 196, 210, 248);
+          }
+          return;
+        }
+
+        if (game.statusKind === 'love') {
+          const w = measureBlockText('LOVES ME', FONT_5X4, 1);
+          renderBlockText(
+            'LOVES ME',
+            midCol,
+            topRow,
+            95,
+            FONT_5X4,
+            1,
+            [255, 234, 246],
+            [255, 143, 192],
+            [218, 86, 148],
+            t
+          );
+          const flankDist = Math.floor(w * 0.5) + 3;
+          plotCell(Math.floor(midCol - flankDist), topRow + 2, 95, 42, 255, 184, 220);
+          plotCell(Math.floor(midCol + flankDist), topRow + 2, 95, 42, 255, 184, 220);
+          drawTextCentered(topRow + 6, '*  +  L O V E S   M E  +  *', 95, 255, 198, 224);
+        } else {
+          const singleW = measureBlockText('LOVES ME NOT', FONT_5X4, 1);
+          if (singleW <= cols - 6) {
+            renderBlockText(
+              'LOVES ME NOT',
+              midCol,
+              topRow,
+              95,
+              FONT_5X4,
+              1,
+              [232, 240, 255],
+              [169, 188, 255],
+              [106, 130, 226],
+              t
+            );
+            drawTextCentered(topRow + 6, '.  :  L O V E S   M E   N O T  :  .', 95, 194, 210, 255);
+          } else {
+            renderBlockText('LOVES ME', midCol, topRow, 95, FONT_5X4, 1, [232, 240, 255], [169, 188, 255], [106, 130, 226], t);
+            renderBlockText('NOT', midCol, topRow + 6, 95, FONT_5X4, 1, [232, 240, 255], [169, 188, 255], [106, 130, 226], t);
+            drawTextCentered(topRow + 12, '.  :  L O V E S   M E   N O T  :  .', 95, 194, 210, 255);
+          }
+        }
+      }
+
+      // =========================================================================
+      // Scene Layer 7: Monumental Framed Final Verdict ASCII Banner
+      // =========================================================================
+      function renderVerdictBanner(t) {
+        if (!game.finished || game.bannerDelay > 0) return;
+
+        const isLove = game.verdictLovesMe;
+        const frameCol = isLove ? COL.CENTER_GOLD : COL.PETAL_LAV;
+        const topRgb = isLove ? [255, 242, 250] : [236, 242, 255];
+        const midRgb = isLove ? [255, 143, 192] : [169, 188, 255];
+        const botRgb = isLove ? [216, 78, 146] : [102, 128, 226];
+
+        const headlineText = isLove ? 'LOVES ME!' : 'LOVES ME NOT...';
+        const desktopWideW = measureBlockText(headlineText, FONT_7X6, 2);
+        const mobileBlockW = measureBlockText(isLove ? 'LOVES ME!' : 'LOVES ME', FONT_5X4, 1);
+
+        let useFont = null;
+        let spacing = 1;
+        let artLines = [];
+        let innerW = 40;
+
+        if (cols >= desktopWideW + 10) {
+          useFont = FONT_7X6;
+          spacing = 2;
+          artLines = [headlineText];
+          innerW = Math.min(cols - 6, desktopWideW + 8);
+        } else if (cols >= mobileBlockW + 8) {
+          useFont = FONT_5X4;
+          spacing = 1;
+          artLines = isLove ? ['LOVES ME!'] : ['LOVES ME', 'NOT...'];
+          const maxArtW = Math.max(...artLines.map((ln) => measureBlockText(ln, FONT_5X4, 1)));
+          innerW = Math.min(cols - 4, Math.max(38, maxArtW + 6));
+        } else {
+          innerW = Math.max(28, cols - 4);
+        }
+
+        const fontH = useFont ? useFont.L.length : 1;
+        const artTotalH = artLines.length > 0 ? artLines.length * fontH + (artLines.length - 1) : 1;
+        const boxH = 2 + artTotalH + 5; // top border + pad + art + pad + rule + sub + prompt + bottom border
+        const boxW = innerW + 2;
+
+        const mobile = vw <= 640;
+        const startRow = Math.max(mobile ? Math.ceil(rows * 0.19) : 2, Math.floor((rows - boxH) * (mobile ? 0.24 : 0.20)));
+        const startCol = Math.max(1, Math.floor((cols - boxW) * 0.5));
+
+        game.bannerBounds = {
+          startCol,
+          endCol: startCol + boxW - 1,
+          startRow,
+          endRow: startRow + boxH - 1
+        };
+
+        // Opaque dark panel behind entire framed banner
+        for (let r = 0; r < boxH; r++) {
+          for (let c = 0; c < boxW; c++) {
+            plotCell(startCol + c, startRow + r, 98, 32, 7, 9, 24);
+          }
+        }
+
+        const topBottomBorder = '(*)' + '='.repeat(Math.max(4, boxW - 6)) + '(*)';
+        const dividerLine = '+' + '-'.repeat(innerW) + '+';
+
+        const drawFrameStr = (row, str, rgb) => {
+          for (let c = 0; c < str.length; c++) {
+            plotCell(startCol + c, row, 100, str.charCodeAt(c), rgb[0], rgb[1], rgb[2]);
+          }
+        };
+
+        drawFrameStr(startRow, topBottomBorder, frameCol);
+        drawFrameStr(startRow + boxH - 1, topBottomBorder, frameCol);
+
+        for (let r = 1; r < boxH - 1; r++) {
+          plotCell(startCol, startRow + r, 100, 124, frameCol[0], frameCol[1], frameCol[2]);
+          plotCell(startCol + boxW - 1, startRow + r, 100, 124, frameCol[0], frameCol[1], frameCol[2]);
+        }
+
+        const artStartRow = startRow + 2;
+        if (useFont) {
+          for (let i = 0; i < artLines.length; i++) {
+            renderBlockText(
+              artLines[i],
+              cols * 0.5,
+              artStartRow + i * (fontH + 1),
+              101,
+              useFont,
+              spacing,
+              topRgb,
+              midRgb,
+              botRgb,
+              t
+            );
+          }
+        } else {
+          drawTextCentered(artStartRow, isLove ? '* * L O V E S   M E ! * *' : '. . L O V E S  M E  N O T . .', 101, midRgb[0], midRgb[1], midRgb[2]);
+        }
+
+        const ruleRow = artStartRow + artTotalH + 1;
+        drawFrameStr(ruleRow, dividerLine, frameCol);
+
+        const subMsg = isLove ? 'The last petal has spoken: pure devotion!' : 'The last petal has fallen...';
+        drawTextCentered(ruleRow + 1, subMsg.slice(0, innerW - 2), 100, COL.STAR_WHITE[0], COL.STAR_WHITE[1], COL.STAR_WHITE[2]);
+
+        const blink = Math.sin(t * 3.8) > -0.25;
+        const promptMsg = blink ? '*  PRESS [R] OR TAP PLAY AGAIN  *' : '   PRESS [R] OR TAP PLAY AGAIN   ';
+        const pCol = isLove ? COL.CENTER_GOLD : COL.PETAL_LAV;
+        drawTextCentered(ruleRow + 2, promptMsg.slice(0, innerW - 2), 100, pCol[0], pCol[1], pCol[2]);
+      }
+
+      // =========================================================================
+      // Canvas Flush (Batched by Fill Color)
+      // =========================================================================
+      function drawToCanvas() {
+        ctx.fillStyle = bgGradient;
+        ctx.fillRect(0, 0, vw, vh);
+
+        ctx.font = `700 ${fontSize}px ${FONT_FAMILY}`;
+        ctx.textBaseline = 'top';
+        ctx.textAlign = 'left';
+        ctx.shadowBlur = glowEnabled ? (vw <= 640 ? 3 : 5) : 0;
+
+        let lastColor = '';
+        for (let row = 0; row < rows; row++) {
+          const y = originY + row * cellH;
+          const rowOffset = row * cols;
+          for (let col = 0; col < cols; col++) {
+            const idx = rowOffset + col;
+            const code = charBuf[idx];
+            if (code === 32) continue;
+
+            const color = `rgb(${rBuf[idx]},${gBuf[idx]},${bBuf[idx]})`;
+            if (color !== lastColor) {
+              ctx.fillStyle = color;
+              if (glowEnabled) ctx.shadowColor = color;
+              lastColor = color;
+            }
+            ctx.fillText(String.fromCharCode(code), originX + col * cellW, y);
+          }
+        }
+        if (glowEnabled) ctx.shadowBlur = 0;
+      }
+
+      // =========================================================================
+      // Gameplay Actions & Physics Update
+      // =========================================================================
+      function spawnSparkleBurst(wx, wy, color, count) {
+        const glyphs = [42, 43, 46]; // '*', '+', '.'
+        for (let i = 0; i < count; i++) {
+          const a = Math.random() * Math.PI * 2;
+          const spd = (0.06 + Math.random() * 0.17) * flowerScale;
+          game.particles.push({
+            x: wx,
+            y: wy,
+            vx: Math.cos(a) * spd,
+            vy: Math.sin(a) * spd - 0.04,
+            age: 0,
+            maxAge: 0.65 + Math.random() * 0.55,
+            phase: Math.random() * Math.PI * 2,
+            charCode: glyphs[i % glyphs.length],
+            color
+          });
+        }
+      }
+
+      function spawnCelebrationParticle() {
+        if (!game.bannerBounds) return;
+        const glyphs = [42, 43, 46]; // '*', '+', '.'
+        const colors = game.verdictLovesMe
+          ? [COL.PETAL_PINK, COL.CENTER_GOLD, COL.STAR_WHITE, COL.PETAL_LAV]
+          : [COL.PETAL_LAV, COL.STAR_WHITE];
+        const b = game.bannerBounds;
+        const padCol = 4;
+        const c = (b.startCol - padCol) + Math.random() * (b.endCol - b.startCol + padCol * 2);
+        const r = (b.startRow - 2) + Math.random() * (b.endRow - b.startRow + 4);
+        const wx = ((c + 0.5) - cols * 0.5) * cellW / (rows * cellH);
+        const wy = (r + 0.5) / rows;
+        game.particles.push({
+          x: wx,
+          y: wy,
+          vx: (Math.random() - 0.5) * 0.035,
+          vy: -0.025 - Math.random() * 0.035,
+          age: 0,
+          maxAge: 1.0 + Math.random() * 0.9,
+          phase: Math.random() * Math.PI * 2,
+          charCode: glyphs[Math.floor(Math.random() * glyphs.length)],
+          color: colors[Math.floor(Math.random() * colors.length)]
+        });
+      }
+
+      function pluckPetal(preferredId = -1) {
+        const now = performance.now();
+        if (now - game.lastPluckTime < 85) return false;
+        if (game.finished) return false;
+
+        const remaining = game.petals.filter((p) => !p.plucked);
+        if (remaining.length === 0) return false;
+
+        let target = null;
+        if (preferredId >= 0) target = remaining.find((p) => p.id === preferredId) || null;
+        if (!target) target = remaining[0];
+
+        game.lastPluckTime = now;
+        target.plucked = true;
+        game.pluckedCount += 1;
+        if (game.hoveredPetalId === target.id) game.hoveredPetalId = -1;
+
+        const isLovesMe = game.pluckedCount % 2 === 1;
+        game.statusKind = isLovesMe ? 'love' : 'not';
+        game.statusTimer = 0;
+
+        pluckedCounterEl.textContent = `Plucked: ${game.pluckedCount}`;
+
+        const center = getFlowerCenter(game.time);
+        const petalLen = 0.180 * flowerScale * target.lengthScale;
+        const px = center.cx + Math.cos(target.angle) * petalLen * 0.45;
+        const py = center.cy + Math.sin(target.angle) * petalLen * 0.45;
+
+        game.fallingPetals.push({
+          x: px,
+          y: py,
+          vx: Math.cos(target.angle) * 0.095 * flowerScale + (Math.random() - 0.5) * 0.04,
+          vy: Math.sin(target.angle) * 0.04 - 0.055,
+          rot: target.angle,
+          rotSpeed: (Math.random() > 0.5 ? 1 : -1) * (1.2 + Math.random() * 1.4),
+          tumble: Math.random() * Math.PI,
+          tumbleSpeed: 2.3 + Math.random() * 1.6,
+          swayPhase: Math.random() * Math.PI * 2,
+          len: petalLen,
+          halfW: 0.046 * flowerScale * target.widthScale,
+          colorShift: target.colorShift,
+          trailTimer: 0
+        });
+
+        game.recoilVel += Math.cos(target.angle) * -4.2;
+
+        game.ripples.push({
+          x: center.cx,
+          y: center.cy,
+          age: 0,
+          maxAge: 0.70,
+          spin: isLovesMe ? 1.3 : -1.3,
+          color: isLovesMe ? COL.PETAL_PINK : COL.PETAL_LAV
+        });
+        spawnSparkleBurst(px, py, isLovesMe ? COL.PETAL_PINK : COL.PETAL_LAV, 22);
+
+        playPluckSfx(isLovesMe);
+
+        if (remaining.length === 1) {
+          game.finished = true;
+          game.verdictLovesMe = isLovesMe;
+          game.bannerDelay = 0.32;
+          game.bannerRevealAt = performance.now() + 320;
+          btnRestart.textContent = 'Play Again';
+          liveStatusEl.textContent = isLovesMe
+            ? 'Final petal plucked: LOVES ME!'
+            : 'Final petal plucked: LOVES ME NOT.';
+          setTimeout(() => {
+            if (game.finished) playVerdictSfx(game.verdictLovesMe);
+          }, 340);
+        } else {
+          liveStatusEl.textContent = isLovesMe ? 'Loves me.' : 'Loves me not.';
+        }
+        return true;
+      }
+
+      function updatePhysics(dt) {
+        game.time += dt;
+        game.statusTimer += dt;
+
+        // Occasional shooting star across upper sky
+        if (!REDUCED_MOTION) {
+          if (game.shootingStar) {
+            const st = game.shootingStar;
+            st.x += st.vx * dt;
+            st.y += st.vy * dt;
+            st.age += dt;
+            if (st.age > st.maxAge) game.shootingStar = null;
+          } else {
+            game.nextShootTime -= dt;
+            if (game.nextShootTime <= 0) {
+              const fromLeft = Math.random() > 0.5;
+              game.shootingStar = {
+                x: fromLeft ? -halfWorldW * 0.75 : halfWorldW * 0.75,
+                y: 0.06 + Math.random() * 0.14,
+                vx: (fromLeft ? 1 : -1) * (0.48 + Math.random() * 0.22),
+                vy: 0.16 + Math.random() * 0.10,
+                age: 0,
+                maxAge: 1.15
+              };
+              game.nextShootTime = 5.0 + Math.random() * 4.5;
+            }
+          }
+        }
+
+        // Damped spring recoil on stem/head
+        const springK = 48;
+        const damping = 7.5;
+        game.recoilVel += (-springK * game.recoil - damping * game.recoilVel) * dt;
+        game.recoil += game.recoilVel * dt;
+
+        // Falling petals -> settle onto the meadow hill
+        for (let i = game.fallingPetals.length - 1; i >= 0; i--) {
+          const fp = game.fallingPetals[i];
+          fp.vy += 0.16 * dt;
+          fp.vy = Math.min(fp.vy, 0.23);
+          fp.vx *= Math.pow(0.28, dt);
+          const flutterSway = Math.sin(game.time * 3.4 + fp.swayPhase) * 0.085 * flowerScale;
+          fp.x += (fp.vx + flutterSway) * dt;
+          fp.y += fp.vy * dt;
+          fp.rot += fp.rotSpeed * dt;
+          fp.tumble += fp.tumbleSpeed * dt;
+
+          // Subtle trailing sparkle specks
+          fp.trailTimer += dt;
+          if (!REDUCED_MOTION && fp.trailTimer > 0.14 && game.particles.length < 70) {
+            fp.trailTimer = 0;
+            game.particles.push({
+              x: fp.x,
+              y: fp.y,
+              vx: (Math.random() - 0.5) * 0.015,
+              vy: -0.01,
+              age: 0,
+              maxAge: 0.45,
+              phase: Math.random() * Math.PI * 2,
+              charCode: 46,
+              color: COL.PETAL_PINK
+            });
+          }
+
+          const nx = clamp(0.5 + (fp.x / Math.max(0.1, halfWorldW)) * 0.5, 0.05, 0.95);
+          const groundY = meadowCrestY(nx) + 0.05 + (i % 3) * 0.035;
+          if (fp.y >= groundY) {
+            game.settledPetals.push({
+              x: fp.x,
+              y: Math.min(0.95, groundY),
+              rot: fp.rot,
+              len: fp.len,
+              halfW: fp.halfW,
+              colorShift: fp.colorShift
+            });
+            if (game.settledPetals.length > 10) game.settledPetals.shift();
+            game.fallingPetals.splice(i, 1);
+          }
+        }
+
+        for (let i = game.ripples.length - 1; i >= 0; i--) {
+          game.ripples[i].age += dt;
+          if (game.ripples[i].age >= game.ripples[i].maxAge) game.ripples.splice(i, 1);
+        }
+
+        for (let i = game.particles.length - 1; i >= 0; i--) {
+          const pt = game.particles[i];
+          pt.age += dt;
+          pt.x += pt.vx * dt;
+          pt.y += pt.vy * dt;
+          pt.vy += 0.05 * dt;
+          if (pt.age >= pt.maxAge) game.particles.splice(i, 1);
+        }
+
+        if (game.finished && game.bannerDelay > 0) {
+          if (performance.now() >= game.bannerRevealAt) {
+            game.bannerDelay = 0;
+            game.bannerShownAt = performance.now();
+          }
+        } else if (game.finished && game.bannerBounds) {
+          const targetParticles = REDUCED_MOTION ? 14 : 40;
+          if (game.particles.length < targetParticles && Math.random() < (REDUCED_MOTION ? 0.30 : 0.78)) {
+            spawnCelebrationParticle();
+          }
+        }
+      }
+
+      // =========================================================================
+      // Pointer Hit-Testing & Controls
+      // =========================================================================
+      function pointerToCell(clientX, clientY) {
+        const rect = canvas.getBoundingClientRect();
+        const x = clientX - rect.left - originX;
+        const y = clientY - rect.top - originY;
+        const col = Math.floor(x / cellW);
+        const row = Math.floor(y / cellH);
+        const wx = ((col + 0.5) - cols * 0.5) * cellW / (rows * cellH);
+        const wy = (row + 0.5) / rows;
+        return { col, row, wx, wy };
+      }
+
+      function findNearestPetal(wx, wy) {
+        const center = getFlowerCenter(game.time);
+        const dx = wx - center.cx;
+        const dy = wy - center.cy;
+        const dist = Math.hypot(dx, dy);
+        if (dist > 0.30 * flowerScale) return -1;
+
+        const clickAngle = Math.atan2(dy, dx);
+        let bestId = -1;
+        let bestDiff = Infinity;
+        for (let i = 0; i < game.petals.length; i++) {
+          const p = game.petals[i];
+          if (p.plucked) continue;
+          let diff = Math.abs(p.angle - clickAngle) % (Math.PI * 2);
+          if (diff > Math.PI) diff = Math.PI * 2 - diff;
+          if (diff < bestDiff) {
+            bestDiff = diff;
+            bestId = p.id;
+          }
+        }
+        return bestId;
+      }
+
+      function hitTestPetal(clientX, clientY) {
+        const { col, row, wx, wy } = pointerToCell(clientX, clientY);
+        if (col >= 0 && col < cols && row >= 0 && row < rows) {
+          const direct = petalIdBuf[row * cols + col];
+          if (direct >= 0) return direct;
+        }
+        return findNearestPetal(wx, wy);
+      }
+
+      function restartGame() {
+        playRestartSfx();
+        createFlower();
+      }
+
+      canvas.addEventListener('pointermove', (e) => {
+        if (game.finished) {
+          game.hoveredPetalId = -1;
+          canvas.style.cursor = 'pointer';
+          return;
+        }
+        const hit = hitTestPetal(e.clientX, e.clientY);
+        game.hoveredPetalId = hit;
+        canvas.style.cursor = hit >= 0 ? 'pointer' : 'default';
+      });
+
+      canvas.addEventListener('pointerleave', () => {
+        game.hoveredPetalId = -1;
+      });
+
+      canvas.addEventListener('pointerdown', (e) => {
+        ensureAudio();
+        if (game.finished) {
+          if (game.bannerDelay <= 0 && performance.now() - game.bannerShownAt > 650) {
+            restartGame();
+          }
+          return;
+        }
+        const hit = hitTestPetal(e.clientX, e.clientY);
+        if (hit >= 0) pluckPetal(hit);
+      });
+
+      function toggleSound() {
+        soundEnabled = !soundEnabled;
+        btnSound.textContent = `Sound: ${soundEnabled ? 'On' : 'Off'}`;
+        btnSound.setAttribute('aria-pressed', String(soundEnabled));
+        if (soundEnabled) {
+          ensureAudio();
+          playTone(587.33, 0, 0.1, 'sine', 0.05);
+        }
+      }
+
+      function toggleGlow() {
+        glowEnabled = !glowEnabled;
+        btnGlow.textContent = `Glow: ${glowEnabled ? 'On' : 'Off'}`;
+        btnGlow.setAttribute('aria-pressed', String(glowEnabled));
+        stage.classList.toggle('glow-on', glowEnabled);
+      }
+
+      btnRestart.addEventListener('click', () => {
+        btnRestart.blur();
+        ensureAudio();
+        restartGame();
+      });
+
+      btnSound.addEventListener('click', () => {
+        btnSound.blur();
+        toggleSound();
+      });
+
+      btnGlow.addEventListener('click', () => {
+        btnGlow.blur();
+        toggleGlow();
+      });
+
+      window.addEventListener('keydown', (e) => {
+        if (e.code === 'Space') {
+          e.preventDefault();
+          ensureAudio();
+          if (!game.finished) pluckPetal(-1);
+        } else if (e.key === 'r' || e.key === 'R') {
+          e.preventDefault();
+          ensureAudio();
+          restartGame();
+        } else if (e.key === 'm' || e.key === 'M') {
+          toggleSound();
+        } else if (e.key === 'g' || e.key === 'G') {
+          toggleGlow();
+        }
+      });
+
+      let resizeTimer = null;
+      window.addEventListener('resize', () => {
+        clearTimeout(resizeTimer);
+        resizeTimer = setTimeout(configureGrid, 60);
+      });
+
+      // =========================================================================
+      // Main Animation Loop
+      // =========================================================================
+      let lastFrame = performance.now();
+
+      function frame(now) {
+        const dt = Math.min(0.05, Math.max(0.001, (now - lastFrame) / 1000));
+        lastFrame = now;
+
+        updatePhysics(dt);
+        clearBuffers();
+
+        const center = getFlowerCenter(game.time);
+        renderSky(game.time, center.cx, center.cy);
+        renderHillsAndMeadow(game.time);
+        renderStemAndLeaves(game.time, center.cx, center.cy);
+        renderFlower(game.time, center.cx, center.cy);
+        renderFallingAndSettledPetals();
+        renderRipplesAndParticles();
+        renderStatusBanner(game.time);
+        renderVerdictBanner(game.time);
+        drawToCanvas();
+
+        requestAnimationFrame(frame);
+      }
+
+      configureGrid();
+      createFlower();
+      requestAnimationFrame(frame);
+    })();
+  </script>
+</body>
+</html>
